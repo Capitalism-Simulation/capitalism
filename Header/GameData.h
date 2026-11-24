@@ -67,8 +67,22 @@ struct Settings {
     int trueEndingMinAffection = 4;
 };
 
+struct GenderOption {
+    std::string id;  // e.g. "m", "f", "n"
+    std::string name;
+};
+
+// A word that changes with the chosen genders, used in text as {word}.
+struct GenderWord {
+    std::string by;                             // "player", "lover" or "lover+player"
+    std::map<std::string, std::string> values;  // key: player id, lover id, or "lover:player"
+};
+
 struct GameData {
     Settings settings;
+    std::vector<GenderOption> playerGenders;
+    std::vector<GenderOption> loverGenders;
+    std::map<std::string, GenderWord> genderWords;
     std::map<std::string, std::string> ui;
     std::map<std::string, std::string> slotNames;
     std::vector<Difficulty> difficulties;
@@ -84,6 +98,13 @@ GameData loadGameData(const std::filesystem::path& path);
 
 // Looks for data/game.json next to the working directory or the executable (and its parents).
 std::filesystem::path findDataFile(const char* argv0);
+
+// Resolves gender tokens in game text:
+//   {P:male|female}            by player gender (one option per player gender, in data order)
+//   {L:male|female|unset}      by lover gender (one option per lover gender, in data order)
+//   {word}                     a GameData::genderWords entry
+// Any other {token} is left untouched.
+std::string applyGender(const GameData& data, const std::string& text, size_t playerGender, size_t loverGender);
 
 // Replaces {name} placeholders, e.g. format("{a} won", {{"a", "100"}}).
 std::string format(const std::string& tmpl, const std::vector<std::pair<std::string, std::string>>& vars);

@@ -11,6 +11,8 @@ struct Player {
     std::string name;
     size_t job = 0;         // index into GameData::jobs
     size_t difficulty = 0;  // index into GameData::difficulties
+    size_t gender = 0;      // index into GameData::playerGenders
+    size_t loverGender = 0; // index into GameData::loverGenders
 };
 
 class Game {
@@ -38,4 +40,5 @@ private:
     void applyOutcome(const Outcome& outcome);
     void runEnding();
     const std::string& endingText(const std::string& key) const;  // job override, else shared text
+    std::string localize(const std::string& text) const;          // resolves gender tokens
 };

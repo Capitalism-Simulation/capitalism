@@ -55,6 +55,45 @@ def main():
         phase = "late" if turn >= s["lateGameStartTurn"] else "early"
         need[(phase, SLOTS[(turn - 1) % 3])] += 1
 
+    # Gender tokens: {P:a|b}, {L:a|b|c}, {word}. {color} is filled in by the ending code.
+    import re
+
+    n_player = len(data["genders"]["player"])
+    n_lover = len(data["genders"]["lover"])
+    words = data.get("genderWords", {})
+    for name, w in words.items():
+        p_ids = [g["id"] for g in data["genders"]["player"]]
+        l_ids = [g["id"] for g in data["genders"]["lover"]]
+        keys = {"player": p_ids, "lover": l_ids, "lover+player": [f"{l}:{p}" for l in l_ids for p in p_ids]}.get(w.get("by"))
+        if keys is None:
+            err(f"genderWords.{name}: by must be player, lover or lover+player")
+        else:
+            for k in keys:
+                if k not in w.get("values", {}):
+                    err(f"genderWords.{name}: missing value for {k}")
+
+    def check_tokens(text, where):
+        for inner in re.findall(r"\{([^{}]*)\}", text):
+            if inner.startswith("P:") and len(inner[2:].split("|")) != n_player:
+                err(f"{where}: {{{inner}}} needs {n_player} options")
+            elif inner.startswith("L:") and len(inner[2:].split("|")) != n_lover:
+                err(f"{where}: {{{inner}}} needs {n_lover} options")
+            elif not inner.startswith(("P:", "L:")) and inner not in words and inner != "color":
+                err(f"{where}: unknown token {{{inner}}}")
+
+    def walk(value, where):
+        if isinstance(value, str):
+            check_tokens(value, where)
+        elif isinstance(value, dict):
+            for k, v in value.items():
+                if k not in ("ui", "genderWords"):
+                    walk(v, f"{where}.{k}")
+        elif isinstance(value, list):
+            for i, v in enumerate(value):
+                walk(v, f"{where}[{i}]")
+
+    walk({k: v for k, v in data.items() if k not in ("ui", "genderWords", "genders")}, "data")
+
     ids = set()
     for job in data["jobs"]:
         jid = job["id"]

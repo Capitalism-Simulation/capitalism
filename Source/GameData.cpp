@@ -108,6 +108,24 @@ GameData parseGameData(const json::Value& root) {
     }
     if (d.difficulties.empty()) dataError("difficulties", "at least one difficulty is required");
 
+    const json::Value& genders = root.at("genders");
+    for (const json::Value& v : genders.at("player").asArray())
+        d.playerGenders.push_back({v.at("id").asString(), v.at("name").asString()});
+    for (const json::Value& v : genders.at("lover").asArray())
+        d.loverGenders.push_back({v.at("id").asString(), v.at("name").asString()});
+    if (d.playerGenders.empty() || d.loverGenders.empty())
+        dataError("genders", "player and lover need at least one option");
+    if (const json::Value* words = root.find("genderWords")) {
+        for (const auto& kv : words->asObject()) {
+            GenderWord w;
+            w.by = kv.second.at("by").asString();
+            if (w.by != "player" && w.by != "lover" && w.by != "lover+player")
+                dataError("genderWords." + kv.first, "by must be player, lover or lover+player");
+            w.values = parseStringMap(kv.second.at("values"));
+            d.genderWords[kv.first] = w;
+        }
+    }
+
     for (const json::Value& v : root.at("lovers").asArray())
         d.lovers.push_back({v.at("color").asString(), v.at("confess").asString()});
     if (d.lovers.empty()) dataError("lovers", "at least one lover is required");
@@ -188,6 +206,56 @@ fs::path findDataFile(const char* argv0) {
         if (fs::exists(base / relative, ec)) return base / relative;
     }
     return relative;  // loadGameData reports the failure
+}
+
+namespace {
+
+std::vector<std::string> splitOptions(const std::string& s) {
+    std::vector<std::string> out;
+    size_t start = 0;
+    while (true) {
+        size_t bar = s.find('|', start);
+        out.push_back(s.substr(start, bar == std::string::npos ? std::string::npos : bar - start));
+        if (bar == std::string::npos) break;
+        start = bar + 1;
+    }
+    return out;
+}
+
+}  // namespace
+
+std::string applyGender(const GameData& data, const std::string& text, size_t playerGender, size_t loverGender) {
+    const std::string& p = data.playerGenders[playerGender].id;
+    const std::string& l = data.loverGenders[loverGender].id;
+    std::string out;
+    size_t pos = 0;
+    while (pos < text.size()) {
+        size_t open = text.find('{', pos);
+        size_t close = open == std::string::npos ? std::string::npos : text.find('}', open);
+        if (close == std::string::npos) {
+            out.append(text, pos, std::string::npos);
+            break;
+        }
+        out.append(text, pos, open - pos);
+        std::string inner = text.substr(open + 1, close - open - 1);
+        std::string replacement = "{" + inner + "}";
+        if (inner.size() >= 2 && (inner[0] == 'P' || inner[0] == 'L') && inner[1] == ':') {
+            std::vector<std::string> options = splitOptions(inner.substr(2));
+            size_t index = inner[0] == 'P' ? playerGender : loverGender;
+            if (index < options.size()) replacement = options[index];
+        } else {
+            auto it = data.genderWords.find(inner);
+            if (it != data.genderWords.end()) {
+                const GenderWord& w = it->second;
+                std::string key = w.by == "player" ? p : w.by == "lover" ? l : l + ":" + p;
+                auto v = w.values.find(key);
+                if (v != w.values.end()) replacement = v->second;
+            }
+        }
+        out += replacement;
+        pos = close + 1;
+    }
+    return out;
 }
 
 std::string format(const std::string& tmpl, const std::vector<std::pair<std::string, std::string>>& vars) {

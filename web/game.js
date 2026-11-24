@@ -24,6 +24,8 @@
     name: '',
     job: 0,
     difficulty: 0,
+    gender: 0,
+    loverGender: 0,
     balance: 0,
     shownBalance: 0,
     affection: [],
@@ -174,17 +176,40 @@
       jobs.append(label);
     });
 
-    const diffs = $('difficulty-options');
-    diffs.replaceChildren();
-    data.difficulties.forEach((d, i) => {
+    fillSegmented('difficulty-options', 'difficulty', data.difficulties.map((d) => d.name), saved.difficulty ?? 1);
+    fillSegmented('gender-options', 'gender', data.genders.player.map((g) => g.name), saved.gender ?? 0);
+    fillSegmented('lover-gender-options', 'loverGender', data.genders.lover.map((g) => g.name), saved.loverGender ?? 0);
+    if (!jobs.querySelector('input:checked')) jobs.querySelector('input').checked = true;
+  }
+
+  function fillSegmented(containerId, name, labels, selected) {
+    const box = $(containerId);
+    box.replaceChildren();
+    labels.forEach((text, i) => {
       const label = el('label');
       const input = el('input');
-      Object.assign(input, { type: 'radio', name: 'difficulty', value: String(i), checked: i === (saved.difficulty ?? 1) });
-      label.append(input, document.createTextNode(d.name));
-      diffs.append(label);
+      Object.assign(input, { type: 'radio', name, value: String(i), checked: i === selected });
+      label.append(input, document.createTextNode(text));
+      box.append(label);
     });
-    if (!diffs.querySelector('input:checked')) diffs.querySelector('input').checked = true;
-    if (!jobs.querySelector('input:checked')) jobs.querySelector('input').checked = true;
+    if (!box.querySelector('input:checked')) box.querySelector('input').checked = true;
+  }
+
+  // Resolves {P:a|b}, {L:a|b|c} and named genderWords; other {tokens} stay as they are.
+  function localize(text) {
+    const p = data.genders.player[state.gender].id;
+    const l = data.genders.lover[state.loverGender].id;
+    return text.replace(/\{([^{}]*)\}/g, (whole, inner) => {
+      if (/^[PL]:/.test(inner)) {
+        const options = inner.slice(2).split('|');
+        const value = options[inner[0] === 'P' ? state.gender : state.loverGender];
+        return value ?? whole;
+      }
+      const word = data.genderWords && data.genderWords[inner];
+      if (!word) return whole;
+      const key = word.by === 'player' ? p : word.by === 'lover' ? l : `${l}:${p}`;
+      return word.values[key] ?? whole;
+    });
   }
 
   // ---------- Panel, typing and controls ----------
@@ -209,7 +234,7 @@
     panel().append(block);
     const node = document.createTextNode('');
     block.append(node);
-    const chars = Array.from(text.replace(/\n+$/, ''));
+    const chars = Array.from(localize(text).replace(/\n+$/, ''));
     const delay = FAST ? 0 : data.settings.typingDelayMs;
     return new Promise((resolve) => {
       if (!delay) {
@@ -465,14 +490,14 @@
     let key = 'noMoney';
     if (state.balance >= minBalance(job()))
       key = state.affection[chosen] >= data.settings.trueEnding.minAffection ? 'true' : 'noLove';
-    const text = fmt(endingText(job(), key), { color: data.lovers[chosen].color });
+    const text = fmt(localize(endingText(job(), key)), { color: data.lovers[chosen].color });
     clearPanel();
     await typeBlock(text, 'ending');
     await finish({ key, lover: chosen, text, title: lastLine(text) });
   }
 
   async function runBroke() {
-    const text = endingText(job(), 'broke');
+    const text = localize(endingText(job(), 'broke'));
     clearPanel();
     await typeBlock(text, 'ending');
     await finish({ key: 'broke', lover: null, text, title: '파산 엔딩' });
@@ -640,8 +665,16 @@
     state.name = name;
     state.job = Number(document.querySelector('input[name="job"]:checked').value);
     state.difficulty = Number(document.querySelector('input[name="difficulty"]:checked').value);
+    state.gender = Number(document.querySelector('input[name="gender"]:checked').value);
+    state.loverGender = Number(document.querySelector('input[name="loverGender"]:checked').value);
     const saved = storage.load();
-    Object.assign(saved, { name, job: state.job, difficulty: state.difficulty });
+    Object.assign(saved, {
+      name,
+      job: state.job,
+      difficulty: state.difficulty,
+      gender: state.gender,
+      loverGender: state.loverGender,
+    });
     storage.save(saved);
     runGame();
   }

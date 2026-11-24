@@ -23,7 +23,7 @@ void Game::run() {
         showStories();
         if (balance_ <= 0) {
             console::clear();
-            console::typewrite(endingText("broke"));
+            console::typewrite(localize(endingText("broke")));
             break;
         }
         ++turn_;
@@ -42,9 +42,11 @@ size_t Game::chooseFromList(const std::string& title, const std::vector<std::str
 }
 
 void Game::setupPlayer() {
-    std::vector<std::string> jobNames, difficultyNames;
+    std::vector<std::string> jobNames, difficultyNames, playerGenderNames, loverGenderNames;
     for (const Job& j : data_.jobs) jobNames.push_back(j.name);
     for (const Difficulty& d : data_.difficulties) difficultyNames.push_back(d.name);
+    for (const GenderOption& g : data_.playerGenders) playerGenderNames.push_back(g.name);
+    for (const GenderOption& g : data_.loverGenders) loverGenderNames.push_back(g.name);
 
     while (true) {
         do {
@@ -57,12 +59,19 @@ void Game::setupPlayer() {
         console::clear();
         player_.difficulty = chooseFromList(data_.text("selectDifficulty"), difficultyNames);
         console::clear();
+        player_.gender = chooseFromList(data_.text("selectPlayerGender"), playerGenderNames);
+        console::clear();
+        player_.loverGender = chooseFromList(data_.text("selectLoverGender"), loverGenderNames);
+        console::clear();
 
         console::print(data_.text("playerInfo") + "\n");
         console::print(format(data_.text("infoName"), {{"name", player_.name}}) + "\n");
         console::print(format(data_.text("infoJob"), {{"job", job().name}}) + "\n");
         console::print(format(data_.text("infoDifficulty"),
-                              {{"difficulty", data_.difficulties[player_.difficulty].name}}) + "\n\n");
+                              {{"difficulty", data_.difficulties[player_.difficulty].name}}) + "\n");
+        console::print(format(data_.text("infoGender"), {{"player", data_.playerGenders[player_.gender].name},
+                                                         {"lover", data_.loverGenders[player_.loverGender].name}}) +
+                       "\n\n");
         if (console::askYesNo(data_.text("confirmInfo"), data_.text("confirmInvalid"))) break;
         console::clear();
     }
@@ -91,7 +100,7 @@ void Game::showStories() {
         // The prologue's first page appears under the status bar; every other page gets a fresh screen.
         if (!(first && turn_ == 0)) showStatus();
         first = false;
-        console::typewrite(page);
+        console::typewrite(localize(page));
         console::print("\n");
         console::waitEnter(data_.text("pressEnter"));
     }
@@ -103,7 +112,7 @@ void Game::playEvent() {
     const Event* ev = pickEvent(slot, phase);
     if (!ev) return;  // no event defined for this slot: quiet turn
 
-    console::typewrite(ev->text);
+    console::typewrite(localize(ev->text));
     console::print("\n");
     if (ev->hasChoice) {
         bool yes = console::askYesNo(data_.text("yesNoPrompt"), data_.text("yesNoInvalid"));
@@ -142,7 +151,7 @@ const Event* Game::pickEvent(Slot slot, Phase phase) {
 
 void Game::applyOutcome(const Outcome& outcome) {
     if (!outcome.text.empty()) {
-        console::typewrite(outcome.text);
+        console::typewrite(localize(outcome.text));
         if (outcome.text.back() != '\n') console::print("\n");
     }
 
@@ -166,7 +175,7 @@ void Game::applyOutcome(const Outcome& outcome) {
 }
 
 void Game::runEnding() {
-    console::typewrite(job().endingIntro + data_.text("loverMenu"));
+    console::typewrite(localize(job().endingIntro + data_.text("loverMenu")));
     console::print("\n");
 
     const std::string count = std::to_string(data_.lovers.size());
@@ -177,7 +186,7 @@ void Game::runEnding() {
     size_t chosen = static_cast<size_t>(n - 1);
     const Lover& lover = data_.lovers[chosen];
 
-    console::typewrite(job().confess.empty() ? lover.confess : job().confess[chosen]);
+    console::typewrite(localize(job().confess.empty() ? lover.confess : job().confess[chosen]));
     console::print("\n");
     console::waitEnter(data_.text("pressEnter"));
 
@@ -187,10 +196,14 @@ void Game::runEnding() {
     if (balance_ >= minBalance)
         key = affection_[chosen] >= data_.settings.trueEndingMinAffection ? "true" : "noLove";
     console::print("\n");
-    console::typewrite(format(endingText(key), {{"color", lover.color}}));
+    console::typewrite(format(localize(endingText(key)), {{"color", lover.color}}));
 }
 
 const std::string& Game::endingText(const std::string& key) const {
     auto it = job().endings.find(key);
     return it != job().endings.end() ? it->second : data_.endings.at(key);
+}
+
+std::string Game::localize(const std::string& text) const {
+    return applyGender(data_, text, player_.gender, player_.loverGender);
 }
