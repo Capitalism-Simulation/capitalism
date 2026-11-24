@@ -1,0 +1,9 @@
+.vs/
+out/
+build/
+x64/
+Debug/
+Release/
+*.user
+.claude/
+__pycache__/

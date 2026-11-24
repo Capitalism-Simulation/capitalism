@@ -1,0 +1,32 @@
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  data:
+    name: Game data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tools/check_data.py
+
+  console:
+    name: Console build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build
+      - name: Smoke test (play one game with scripted input)
+        run: |
+          for job in 1 2 3; do
+            { printf 'CI\n%s\n1\ny\n' "$job"; for i in $(seq 200); do echo n; done; for i in $(seq 20); do echo 1; done; } > input.txt
+            ./build/Capitalism --fast --seed 1 --data data/game.json < input.txt > out.txt
+            grep -q "Game Over!" out.txt
+          done
