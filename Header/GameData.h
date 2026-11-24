@@ -22,6 +22,8 @@ struct Outcome {
     std::string text;
     int money = 0;
     std::vector<AffectionChange> affection;
+    std::vector<std::string> gainItems;  // item ids added to the inventory
+    std::vector<std::string> loseItems;  // item ids removed (used up)
 };
 
 struct Event {
@@ -33,6 +35,21 @@ struct Event {
     Outcome yes;      // used when hasChoice
     Outcome no;       // used when hasChoice
     Outcome outcome;  // used when !hasChoice
+
+    // Optional item requirement: picking needsYes ? Y : N without needsItem gives `missing`.
+    bool hasNeeds = false;
+    bool needsYes = true;
+    std::string needsItem;
+    Outcome missing;
+
+    // Relationship events (affection or items involved) are kept on every difficulty.
+    bool isRelationship() const;
+};
+
+struct Item {
+    std::string name;
+    std::string object;  // name with object particle, e.g. "goguma" + object particle
+    std::string description;
 };
 
 struct Job {
@@ -60,11 +77,13 @@ struct Difficulty {
     double lossMultiplier = 1.0;  // applied to negative money outcomes
     double gainMultiplier = 1.0;  // applied to positive money outcomes
     int minAffectionDelta = 0;    // added to the affection needed for the true ending
+    bool showAffection = true;    // show per-lover affection while playing
 };
 
 struct Lover {
     std::string color;
     std::string confess;
+    std::string favoriteItem;  // item id; holding it at the confession adds Settings::giftBonus
 };
 
 struct Settings {
@@ -73,6 +92,7 @@ struct Settings {
     int lateGameStartTurn = 10;
     int trueEndingMinBalance = 50000;
     int trueEndingMinAffection = 4;
+    int giftBonus = 2;
 };
 
 struct GenderOption {
@@ -86,8 +106,15 @@ struct GenderWord {
     std::map<std::string, std::string> values;  // key: player id, lover id, or "lover:player"
 };
 
+// Dialogue speaker: one of the lovers, or a display name ("{player}" = the player's name).
+struct Speaker {
+    int lover = -1;
+    std::string name;
+};
+
 struct GameData {
     Settings settings;
+    std::map<std::string, Speaker> speakers;  // id used in "@id line" dialogue markup
     std::vector<GenderOption> playerGenders;
     std::vector<GenderOption> loverGenders;
     std::map<std::string, GenderWord> genderWords;
@@ -95,6 +122,7 @@ struct GameData {
     std::map<std::string, std::string> slotNames;
     std::vector<Difficulty> difficulties;
     std::vector<Lover> lovers;
+    std::map<std::string, Item> items;
     std::map<std::string, std::string> endings;
     std::vector<Job> jobs;
 

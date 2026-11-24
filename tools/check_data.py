@@ -60,7 +60,7 @@ def main():
         phase = "late" if turn >= s["lateGameStartTurn"] else "early"
         need[(phase, SLOTS[(turn - 1) % 3])] += 1
 
-    # Gender tokens: {P:a|b}, {L:a|b|c}, {word}. {color} is filled in by the ending code.
+    # Gender tokens: {P:a|b}, {L:a|b|c}, {word}. {color} and {player} are filled in by the engine.
     import re
 
     n_player = len(data["genders"]["player"])
@@ -83,7 +83,7 @@ def main():
                 err(f"{where}: {{{inner}}} needs {n_player} options")
             elif inner.startswith("L:") and len(inner[2:].split("|")) != n_lover:
                 err(f"{where}: {{{inner}}} needs {n_lover} options")
-            elif not inner.startswith(("P:", "L:")) and inner not in words and inner != "color":
+            elif not inner.startswith(("P:", "L:")) and inner not in words and inner not in ("color", "player"):
                 err(f"{where}: unknown token {{{inner}}}")
 
     def walk(value, where):

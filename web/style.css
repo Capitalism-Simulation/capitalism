@@ -247,6 +247,84 @@ input[type="text"]:focus { outline: 3px solid color-mix(in srgb, var(--accent) 3
 .days span { height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; position: relative; }
 .days span i { position: absolute; inset: 0; width: var(--fill, 0%); background: var(--accent); transition: width 0.3s ease; }
 
+.status-extra { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.hearts { display: flex; gap: 6px; flex-wrap: wrap; min-height: 26px; align-items: center; }
+.heart {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--c) 12%, var(--surface));
+  color: var(--c);
+  font-variant-numeric: tabular-nums;
+  transition: transform 0.2s ease;
+}
+.heart::before { content: "♥"; }
+.heart.pulse { animation: pulse 0.5s ease; }
+@keyframes pulse { 50% { transform: scale(1.25); } }
+.hearts .hidden-note { font-size: 12px; color: var(--muted); }
+.bag-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.bag-btn b { color: var(--accent); }
+.bag-btn.bump { animation: pulse 0.5s ease; }
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 20;
+}
+.sheet-card {
+  background: var(--surface);
+  width: 100%;
+  max-width: 560px;
+  border-radius: 20px 20px 0 0;
+  padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+  max-height: 80dvh;
+  overflow-y: auto;
+}
+.sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.sheet-head h3 { margin: 0; font-size: 18px; }
+.bag-list { list-style: none; padding: 0; margin: 12px 0; display: flex; flex-direction: column; gap: 8px; }
+.bag-list li { background: var(--surface-2); border-radius: 12px; padding: 12px 14px; }
+.bag-list strong { font-size: 16px; }
+.bag-list p { margin: 4px 0 0; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.bag-list .likes { color: var(--c); font-weight: 700; }
+.bag-list .empty { text-align: center; color: var(--muted); background: none; }
+
+.effect {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin: 0 6px 8px 0;
+  animation: pop 0.35s ease;
+}
+.effect.aff { color: var(--c); background: color-mix(in srgb, var(--c) 12%, transparent); }
+.effect.item { color: var(--ink); background: var(--surface-2); }
+.need-tag { display: inline-block; margin: 0 0 10px; font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 8px; }
+.need-tag.have { background: color-mix(in srgb, var(--gain) 14%, transparent); color: var(--gain); }
+.need-tag.missing { background: color-mix(in srgb, var(--loss) 12%, transparent); color: var(--loss); }
+
 .panel {
   flex: 1;
   min-height: 0;
@@ -259,7 +337,26 @@ input[type="text"]:focus { outline: 3px solid color-mix(in srgb, var(--accent) 3
 }
 .panel.typing { cursor: pointer; }
 
-.block { white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; margin: 0 0 14px; }
+.block { word-break: keep-all; overflow-wrap: anywhere; margin: 0 0 14px; }
+.block .narr { white-space: pre-wrap; margin: 0 0 10px; }
+.block .say { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 10px; }
+.block .say .speaker {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 2px 9px;
+  border-radius: 999px;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 13%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--c) 35%, transparent);
+  white-space: nowrap;
+  position: relative;
+  top: -1px;
+}
+.block .say .line { white-space: pre-wrap; font-weight: 600; }
+.block .say.me { flex-direction: row-reverse; text-align: right; }
+.block .say.me .line { font-weight: 500; }
+.block.ending .say .line { font-weight: 700; }
 .block.outcome { padding-left: 12px; border-left: 3px solid var(--line); }
 .block.ending { font-size: 19px; font-weight: 700; }
 

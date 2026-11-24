@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include <random>
 #include <set>
 #include <string>
@@ -27,6 +28,7 @@ private:
     int balance_ = 0;
     std::vector<int> affection_;    // one value per lover
     std::set<std::string> usedEvents_;
+    std::map<std::string, int> inventory_;  // item id -> count
     int turn_ = 0;                  // 0 = prologue, 1..endingTurn-1 = event turns
 
     const Job& job() const { return data_.jobs[player_.job]; }
@@ -41,4 +43,7 @@ private:
     void runEnding();
     const std::string& endingText(const std::string& key) const;  // job override, else shared text
     std::string localize(const std::string& text) const;          // resolves gender tokens
+    bool showAffection() const;
+    bool hasItem(const std::string& id) const;
+    std::string inventoryText() const;
 };

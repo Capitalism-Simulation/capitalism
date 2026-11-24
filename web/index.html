@@ -76,6 +76,10 @@
           <span class="delta" id="status-delta" aria-live="polite"></span>
         </div>
         <div class="days" id="status-days" aria-hidden="true"></div>
+        <div class="status-extra">
+          <div class="hearts" id="status-hearts" aria-label="호감도"></div>
+          <button class="bag-btn" id="btn-bag" type="button" aria-haspopup="dialog">가방 <b id="bag-count">0</b></button>
+        </div>
       </header>
       <article class="panel" id="panel" aria-live="polite"></article>
       <div class="controls" id="controls"></div>
@@ -111,6 +115,17 @@
       <button class="btn ghost small" type="button" id="btn-reset-collection">도감 초기화</button>
     </section>
   </main>
+
+  <div class="sheet" id="bag-sheet" role="dialog" aria-modal="true" aria-labelledby="bag-title" hidden>
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <h3 id="bag-title">가방</h3>
+        <button class="btn ghost small" type="button" id="btn-bag-close">닫기</button>
+      </div>
+      <ul class="bag-list" id="bag-list"></ul>
+      <p class="muted small" id="bag-hint">좋아하는 물건을 고백할 때 가지고 있으면 호감도가 오릅니다.</p>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status" hidden></div>
   <script src="game.js"></script>

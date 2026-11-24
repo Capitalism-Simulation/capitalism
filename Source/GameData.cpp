@@ -34,7 +34,18 @@ Phase parsePhase(const std::string& s, const std::string& where) {
     dataError(where, "unknown phase \"" + s + "\" (use early/late)");
 }
 
-Outcome parseOutcome(const json::Value& v, size_t loverCount, const std::string& where) {
+std::vector<std::string> parseItemList(const json::Value* list, const GameData& d, const std::string& where) {
+    std::vector<std::string> out;
+    if (!list) return out;
+    for (const json::Value& v : list->asArray()) {
+        if (!d.items.count(v.asString())) dataError(where, "unknown item \"" + v.asString() + "\"");
+        out.push_back(v.asString());
+    }
+    return out;
+}
+
+Outcome parseOutcome(const json::Value& v, const GameData& d, const std::string& where) {
+    const size_t loverCount = d.lovers.size();
     Outcome o;
     if (const json::Value* t = v.find("text")) o.text = t->asString();
     if (const json::Value* m = v.find("money")) o.money = m->asInt();
@@ -54,10 +65,14 @@ Outcome parseOutcome(const json::Value& v, size_t loverCount, const std::string&
             o.affection.push_back(c);
         }
     }
+    if (const json::Value* items = v.find("items")) {
+        o.gainItems = parseItemList(items->find("gain"), d, where);
+        o.loseItems = parseItemList(items->find("lose"), d, where);
+    }
     return o;
 }
 
-Event parseEvent(const json::Value& v, size_t loverCount, const std::string& jobId) {
+Event parseEvent(const json::Value& v, const GameData& d, const std::string& jobId) {
     Event e;
     e.id = v.at("id").asString();
     std::string where = "event \"" + e.id + "\" (job " + jobId + ")";
@@ -66,10 +81,20 @@ Event parseEvent(const json::Value& v, size_t loverCount, const std::string& job
     e.text = v.at("text").asString();
     if (const json::Value* choices = v.find("choices")) {
         e.hasChoice = true;
-        e.yes = parseOutcome(choices->at("y"), loverCount, where + " choice y");
-        e.no = parseOutcome(choices->at("n"), loverCount, where + " choice n");
+        e.yes = parseOutcome(choices->at("y"), d, where + " choice y");
+        e.no = parseOutcome(choices->at("n"), d, where + " choice n");
     } else {
-        e.outcome = parseOutcome(v.at("outcome"), loverCount, where + " outcome");
+        e.outcome = parseOutcome(v.at("outcome"), d, where + " outcome");
+    }
+    if (const json::Value* needs = v.find("needs")) {
+        if (!e.hasChoice) dataError(where, "needs requires choices");
+        e.hasNeeds = true;
+        const std::string& choice = needs->at("choice").asString();
+        if (choice != "y" && choice != "n") dataError(where, "needs.choice must be y or n");
+        e.needsYes = choice == "y";
+        e.needsItem = needs->at("item").asString();
+        if (!d.items.count(e.needsItem)) dataError(where, "unknown item \"" + e.needsItem + "\"");
+        e.missing = parseOutcome(needs->at("missing"), d, where + " needs.missing");
     }
     return e;
 }
@@ -91,6 +116,7 @@ GameData parseGameData(const json::Value& root) {
     d.settings.trueEndingMinBalance = s.at("trueEnding").at("minBalance").asInt();
     d.settings.trueEndingMinAffection = s.at("trueEnding").at("minAffection").asInt();
     if (d.settings.endingTurn < 1) dataError("settings", "endingTurn must be at least 1");
+    if (const json::Value* g = s.find("giftBonus")) d.settings.giftBonus = g->asInt();
 
     d.ui = parseStringMap(root.at("ui"));
     d.slotNames = parseStringMap(root.at("ui").at("slotNames"));
@@ -106,6 +132,7 @@ GameData parseGameData(const json::Value& root) {
         if (const json::Value* x = v.find("lossMultiplier")) diff.lossMultiplier = x->asNumber();
         if (const json::Value* x = v.find("gainMultiplier")) diff.gainMultiplier = x->asNumber();
         if (const json::Value* x = v.find("minAffectionDelta")) diff.minAffectionDelta = x->asInt();
+        if (const json::Value* x = v.find("showAffection")) diff.showAffection = x->asBool();
         if (diff.lossMultiplier < 0 || diff.gainMultiplier < 0)
             dataError("difficulty " + diff.name, "multipliers must not be negative");
         if (diff.eventPoolRatio <= 0.0 || diff.eventPoolRatio > 1.0)
@@ -132,9 +159,36 @@ GameData parseGameData(const json::Value& root) {
         }
     }
 
-    for (const json::Value& v : root.at("lovers").asArray())
-        d.lovers.push_back({v.at("color").asString(), v.at("confess").asString()});
+    if (const json::Value* items = root.find("items")) {
+        for (const auto& kv : items->asObject()) {
+            Item item;
+            item.name = kv.second.at("name").asString();
+            item.object = kv.second.at("object").asString();
+            if (const json::Value* desc = kv.second.find("description")) item.description = desc->asString();
+            d.items[kv.first] = item;
+        }
+    }
+
+    for (const json::Value& v : root.at("lovers").asArray()) {
+        Lover lover{v.at("color").asString(), v.at("confess").asString(), ""};
+        if (const json::Value* fav = v.find("favoriteItem")) {
+            lover.favoriteItem = fav->asString();
+            if (!d.items.count(lover.favoriteItem))
+                dataError("lover " + lover.color, "unknown favoriteItem \"" + lover.favoriteItem + "\"");
+        }
+        d.lovers.push_back(lover);
+    }
     if (d.lovers.empty()) dataError("lovers", "at least one lover is required");
+
+    if (const json::Value* speakers = root.find("speakers")) {
+        for (const auto& kv : speakers->asObject()) {
+            Speaker sp;
+            if (const json::Value* l = kv.second.find("lover")) sp.lover = l->asInt();
+            if (const json::Value* n = kv.second.find("name")) sp.name = n->asString();
+            if (sp.lover >= static_cast<int>(d.lovers.size())) dataError("speakers." + kv.first, "lover out of range");
+            d.speakers[kv.first] = sp;
+        }
+    }
 
     for (const json::Value& v : root.at("jobs").asArray()) {
         Job job;
@@ -148,7 +202,7 @@ GameData parseGameData(const json::Value& root) {
             job.stories[std::stoi(kv.first)] = pages;
         }
         for (const json::Value& ev : v.at("events").asArray())
-            job.events.push_back(parseEvent(ev, d.lovers.size(), job.id));
+            job.events.push_back(parseEvent(ev, d, job.id));
         if (const json::Value* confess = v.find("confess")) {
             for (const json::Value& line : confess->asArray()) job.confess.push_back(line.asString());
             if (job.confess.size() != d.lovers.size())
@@ -181,6 +235,14 @@ fs::path executableDir(const char* argv0) {
 }
 
 }  // namespace
+
+bool Event::isRelationship() const {
+    auto involves = [](const Outcome& o) {
+        return !o.affection.empty() || !o.gainItems.empty() || !o.loseItems.empty();
+    };
+    if (hasNeeds) return true;
+    return hasChoice ? involves(yes) || involves(no) : involves(outcome);
+}
 
 const std::string& GameData::text(const std::string& key) const {
     auto it = ui.find(key);

@@ -89,8 +89,38 @@ void Game::showStatus() {
         int day = (turn_ - 1) / 3 + 1;
         auto it = data_.slotNames.find(slotKeys[(turn_ - 1) % 3]);
         std::string slotName = it != data_.slotNames.end() ? it->second : slotKeys[(turn_ - 1) % 3];
-        console::print(format(data_.text("timeOfDay"), {{"day", std::to_string(day)}, {"slot", slotName}}) + "\n\n");
+        console::print(format(data_.text("timeOfDay"), {{"day", std::to_string(day)}, {"slot", slotName}}) + "\n");
     }
+    if (turn_ >= 1) {
+        if (showAffection()) {
+            std::string list;
+            for (size_t i = 0; i < data_.lovers.size(); ++i)
+                list += (i ? "  " : "") + data_.lovers[i].color + " " + std::to_string(affection_[i]);
+            console::print(format(data_.text("affectionLine"), {{"list", list}}) + "\n");
+        }
+        console::print(inventoryText() + "\n");
+    }
+    console::print("\n");
+}
+
+bool Game::showAffection() const {
+    return data_.difficulties[player_.difficulty].showAffection;
+}
+
+bool Game::hasItem(const std::string& id) const {
+    auto it = inventory_.find(id);
+    return it != inventory_.end() && it->second > 0;
+}
+
+std::string Game::inventoryText() const {
+    std::string list;
+    for (const auto& kv : inventory_) {
+        if (kv.second <= 0) continue;
+        if (!list.empty()) list += ", ";
+        list += data_.items.at(kv.first).name;
+        if (kv.second > 1) list += " x" + std::to_string(kv.second);
+    }
+    return list.empty() ? data_.text("inventoryEmpty") : format(data_.text("inventoryLine"), {{"list", list}});
 }
 
 void Game::showStories() {
@@ -116,9 +146,19 @@ void Game::playEvent() {
     console::typewrite(localize(ev->text));
     console::print("\n");
     if (ev->hasChoice) {
+        if (ev->hasNeeds) {
+            const Item& item = data_.items.at(ev->needsItem);
+            console::print(format(data_.text("itemNeeded"),
+                                  {{"item", item.name},
+                                   {"status", data_.text(hasItem(ev->needsItem) ? "itemHave" : "itemMissing")}}) +
+                           "\n");
+        }
         bool yes = console::askYesNo(data_.text("yesNoPrompt"), data_.text("yesNoInvalid"));
         console::print("\n");
-        applyOutcome(yes ? ev->yes : ev->no);
+        if (ev->hasNeeds && yes == ev->needsYes && !hasItem(ev->needsItem))
+            applyOutcome(ev->missing);
+        else
+            applyOutcome(yes ? ev->yes : ev->no);
     } else {
         applyOutcome(ev->outcome);
     }
@@ -133,10 +173,7 @@ const Event* Game::pickEvent(Slot slot, Phase phase) {
     // Order the pool so harder difficulties drop the most generous money events first:
     // affection events always come first (kept on every difficulty), then pure-money events
     // from harshest to most generous by average money. Ties keep the file order.
-    auto hasAffection = [](const Event* e) {
-        if (!e->hasChoice) return !e->outcome.affection.empty();
-        return !e->yes.affection.empty() || !e->no.affection.empty();
-    };
+    auto hasAffection = [](const Event* e) { return e->isRelationship(); };
     auto averageMoney = [](const Event* e) {
         return e->hasChoice ? (e->yes.money + e->no.money) / 2.0 : static_cast<double>(e->outcome.money);
     };
@@ -174,11 +211,24 @@ void Game::applyOutcome(const Outcome& outcome) {
     }
 
     for (const AffectionChange& c : outcome.affection) {
-        if (c.target == kAllLovers) {
-            for (int& a : affection_) a += c.amount;
-        } else {
-            affection_[static_cast<size_t>(c.target)] += c.amount;
+        for (size_t i = 0; i < affection_.size(); ++i) {
+            if (c.target != kAllLovers && static_cast<size_t>(c.target) != i) continue;
+            affection_[i] += c.amount;
+            if (showAffection())
+                console::print(format(data_.text("affectionChange"),
+                                      {{"name", data_.lovers[i].color},
+                                       {"amount", (c.amount > 0 ? "+" : "") + std::to_string(c.amount)}}) +
+                               "\n");
         }
+    }
+    for (const std::string& id : outcome.loseItems) {
+        if (!hasItem(id)) continue;
+        --inventory_[id];
+        console::print(format(data_.text("itemUsed"), {{"item", data_.items.at(id).name}}) + "\n");
+    }
+    for (const std::string& id : outcome.gainItems) {
+        ++inventory_[id];
+        console::print(format(data_.text("itemGained"), {{"item", data_.items.at(id).name}}) + "\n");
     }
 
     // Difficulty scales money, rounded to 100 won.
@@ -211,6 +261,17 @@ void Game::runEnding() {
 
     console::typewrite(localize(job().confess.empty() ? lover.confess : job().confess[chosen]));
     console::print("\n");
+    if (!lover.favoriteItem.empty() && hasItem(lover.favoriteItem)) {
+        // Carrying the lover's favorite item makes the confession more convincing.
+        --inventory_[lover.favoriteItem];
+        console::typewrite(format(data_.text("giftLine"),
+                                  {{"item", data_.items.at(lover.favoriteItem).object}, {"color", lover.color}}));
+        affection_[chosen] += data_.settings.giftBonus;
+        if (showAffection())
+            console::print(format(data_.text("affectionChange"),
+                                  {{"name", lover.color}, {"amount", "+" + std::to_string(data_.settings.giftBonus)}}) +
+                           "\n");
+    }
     console::waitEnter(data_.text("pressEnter"));
 
     int minBalance = job().trueEndingMinBalance >= 0 ? job().trueEndingMinBalance
@@ -230,5 +291,34 @@ const std::string& Game::endingText(const std::string& key) const {
 }
 
 std::string Game::localize(const std::string& text) const {
-    return applyGender(data_, text, player_.gender, player_.loverGender);
+    std::string gendered = applyGender(data_, text, player_.gender, player_.loverGender);
+
+    // Dialogue lines "@speaker line" become "<name> > line" (format: ui.speakerLine).
+    std::string out;
+    size_t pos = 0;
+    while (pos <= gendered.size()) {
+        size_t end = gendered.find('\n', pos);
+        if (end == std::string::npos) end = gendered.size();
+        std::string line = gendered.substr(pos, end - pos);
+        if (line.size() > 1 && line[0] == '@') {
+            size_t space = line.find(' ');
+            if (space != std::string::npos) {
+                std::string id = line.substr(1, space - 1);
+                std::string name = id;
+                auto it = data_.speakers.find(id);
+                if (it != data_.speakers.end()) {
+                    if (it->second.lover >= 0 && static_cast<size_t>(it->second.lover) < data_.lovers.size())
+                        name = format(data_.text("loverName"),
+                                      {{"color", data_.lovers[static_cast<size_t>(it->second.lover)].color}});
+                    else if (!it->second.name.empty())
+                        name = format(it->second.name, {{"player", player_.name}});
+                }
+                line = format(data_.text("speakerLine"), {{"name", name}, {"line", line.substr(space + 1)}});
+            }
+        }
+        out += line;
+        if (end < gendered.size()) out += '\n';
+        pos = end + 1;
+    }
+    return out;
 }

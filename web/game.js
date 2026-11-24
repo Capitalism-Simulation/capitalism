@@ -29,6 +29,7 @@
     balance: 0,
     shownBalance: 0,
     affection: [],
+    inventory: {},
     used: new Set(),
     turn: 0,
     rng: Math.random,
@@ -235,20 +236,71 @@
     p.scrollTop = p.scrollHeight;
   }
 
+  // Splits text into narration and dialogue. A dialogue line looks like `@red “...”`:
+  // red/blue/green/black = the four characters, me = the player, anything else is a name.
+  function segmentsOf(text) {
+    const segs = [];
+    let narration = [];
+    const flush = () => {
+      const t = narration.join('\n').replace(/^\n+|\n+$/g, '');
+      if (t) segs.push({ speaker: null, text: t });
+      narration = [];
+    };
+    for (const line of text.split('\n')) {
+      const m = /^@(\S+)\s+(.*)$/.exec(line);
+      if (m) {
+        flush();
+        segs.push({ speaker: m[1], text: m[2].trim() });
+      } else {
+        narration.push(line);
+      }
+    }
+    flush();
+    return segs;
+  }
+
+  function speakerInfo(id) {
+    const s = (data.speakers || {})[id];
+    if (s && s.lover != null) return { name: `${data.lovers[s.lover].color} 머리`, color: loverVar(s.lover), me: false };
+    if (s && s.name) return { name: s.name.replace('{player}', state.name || '나'), color: 'var(--accent)', me: id === 'me' };
+    return { name: id, color: 'var(--muted)', me: false };
+  }
+
   function typeBlock(text, cls) {
-    const block = el('p', `block ${cls || ''}`);
+    const block = el('div', `block ${cls || ''}`);
     panel().append(block);
-    const node = document.createTextNode('');
-    block.append(node);
-    const chars = Array.from(localize(text).replace(/\n+$/, ''));
+    // Build every line first (speaker chips appear immediately), then type the words in order.
+    const targets = segmentsOf(localize(text)).map((seg) => {
+      const node = document.createTextNode('');
+      if (!seg.speaker) {
+        const p = el('p', 'narr');
+        p.append(node);
+        block.append(p);
+      } else {
+        const info = speakerInfo(seg.speaker);
+        const row = el('div', `say${info.me ? ' me' : ''}`);
+        row.style.setProperty('--c', info.color);
+        const line = el('span', 'line');
+        line.append(node);
+        row.append(el('span', 'speaker', info.name), line);
+        block.append(row);
+        row.hidden = true;  // revealed when its turn to type comes
+      }
+      return { node, chars: Array.from(seg.text), row: node.parentNode.closest('.say') };
+    });
     const delay = FAST ? 0 : data.settings.typingDelayMs;
+    const revealAll = () => targets.forEach((t) => {
+      if (t.row) t.row.hidden = false;
+      t.node.data = t.chars.join('');
+    });
     return new Promise((resolve) => {
       if (!delay) {
-        node.data = chars.join('');
+        revealAll();
         scrollPanel();
         resolve();
         return;
       }
+      let seg = 0;
       let i = 0;
       let timer = 0;
       typing = true;
@@ -260,18 +312,26 @@
         scrollPanel();
         resolve();
       };
-      // Called on click / Enter / Space: show the rest of the text immediately.
+      // Called on click / Enter / Space: show the rest of the block immediately.
       skipTyping = () => {
         clearTimeout(timer);
-        node.data += chars.slice(i).join('');
-        i = chars.length;
+        revealAll();
         finish();
       };
       const step = () => {
-        node.data += chars[i++];
-        if (i % 8 === 0 || chars[i - 1] === '\n') scrollPanel();
-        if (i >= chars.length) finish();
-        else timer = setTimeout(step, delay);
+        while (seg < targets.length && i >= targets[seg].chars.length) {
+          seg++;
+          i = 0;
+        }
+        if (seg >= targets.length) {
+          finish();
+          return;
+        }
+        const t = targets[seg];
+        if (t.row) t.row.hidden = false;
+        t.node.data += t.chars[i++];
+        if (i % 8 === 0 || i === 1 || t.chars[i - 1] === '\n') scrollPanel();
+        timer = setTimeout(step, delay);
       };
       step();
     });
@@ -318,6 +378,10 @@
 
   document.addEventListener('keydown', (e) => {
     if (e.repeat || e.isComposing) return;
+    if (!$('bag-sheet').hidden) {
+      if (e.key === 'Escape') openBag(false);
+      return;  // the bag is open: don't advance the game underneath it
+    }
     if (e.target instanceof Element && e.target.closest('input, textarea, select')) return;
     if (typing && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
@@ -359,6 +423,60 @@
       s.firstChild.style.setProperty('--fill', `${(filled / 3) * 100}%`);
     });
     setBalanceText(state.shownBalance);
+    renderHearts();
+    renderBag();
+  }
+
+  const showAffection = () => difficulty().showAffection !== false;
+
+  function renderHearts(pulseIndex) {
+    const box = $('status-hearts');
+    if (!showAffection()) {
+      box.replaceChildren(el('span', 'hidden-note', '호감도 비공개 (Hard)'));
+      return;
+    }
+    box.replaceChildren(
+      ...data.lovers.map((l, i) => {
+        const value = state.affection[i] ?? 0;
+        const h = el('span', `heart${pulseIndex === i ? ' pulse' : ''}`, String(value));
+        h.style.setProperty('--c', loverVar(i));
+        h.title = `${l.color} 머리 호감도 ${value}`;
+        h.setAttribute('aria-label', h.title);
+        return h;
+      }),
+    );
+  }
+
+  const itemCount = () => Object.values(state.inventory).reduce((a, b) => a + b, 0);
+  const hasItem = (id) => (state.inventory[id] || 0) > 0;
+
+  function renderBag() {
+    $('bag-count').textContent = String(itemCount());
+    const list = $('bag-list');
+    const entries = Object.entries(state.inventory).filter(([, n]) => n > 0);
+    if (!entries.length) {
+      list.replaceChildren(el('li', 'empty', '아직 아무것도 없어요.'));
+      return;
+    }
+    list.replaceChildren(
+      ...entries.map(([id, n]) => {
+        const item = data.items[id];
+        const li = el('li');
+        li.append(el('strong', null, n > 1 ? `${item.name} ×${n}` : item.name), el('p', null, item.description || ''));
+        const fan = data.lovers.findIndex((l) => l.favoriteItem === id);
+        if (fan >= 0) {
+          const likes = el('p', 'likes', `${data.lovers[fan].color} 머리가 좋아할 것 같다`);
+          likes.style.setProperty('--c', loverVar(fan));
+          li.append(likes);
+        }
+        return li;
+      }),
+    );
+  }
+
+  function openBag(open) {
+    $('bag-sheet').hidden = !open;
+    if (open) $('btn-bag-close').focus();
   }
 
   function setBalanceText(value) {
@@ -389,7 +507,12 @@
   // ---------- Game flow ----------
 
   const outcomesOf = (e) => (e.choices ? [e.choices.y, e.choices.n] : [e.outcome]);
-  const hasAffection = (e) => outcomesOf(e).some((o) => o.affection && o.affection.length);
+  // Relationship events (affection or items involved) are kept on every difficulty.
+  const hasAffection = (e) =>
+    !!e.needs ||
+    outcomesOf(e).some(
+      (o) => (o.affection && o.affection.length) || (o.items && ((o.items.gain || []).length || (o.items.lose || []).length)),
+    );
   const averageMoney = (e) => {
     const outs = outcomesOf(e);
     return outs.reduce((sum, o) => sum + (o.money || 0), 0) / outs.length;
@@ -418,11 +541,42 @@
     return chosen;
   }
 
+  function effectChip(cls, text, color) {
+    const chip = el('span', `effect ${cls}`, text);
+    if (color) chip.style.setProperty('--c', color);
+    panel().append(chip);
+  }
+
+  function changeAffection(index, amount) {
+    state.affection[index] += amount;
+    if (!showAffection()) return;
+    effectChip('aff', `♥ ${data.lovers[index].color} 머리 ${amount > 0 ? '+' : ''}${amount}`, loverVar(index));
+    renderHearts(index);
+  }
+
   function applyAffection(list) {
     for (const change of list || []) {
-      if (change.target === 'all') state.affection = state.affection.map((a) => a + change.amount);
-      else state.affection[change.target] += change.amount;
+      data.lovers.forEach((_, i) => {
+        if (change.target === 'all' || change.target === i) changeAffection(i, change.amount);
+      });
     }
+  }
+
+  function applyItems(items) {
+    if (!items) return;
+    for (const id of items.lose || []) {
+      if (!hasItem(id)) continue;
+      state.inventory[id] -= 1;
+      effectChip('item', `가방: ${data.items[id].name} 사용`);
+    }
+    for (const id of items.gain || []) {
+      state.inventory[id] = (state.inventory[id] || 0) + 1;
+      effectChip('item', `가방: ${data.items[id].name} 획득`);
+      $('btn-bag').classList.remove('bump');
+      void $('btn-bag').offsetWidth;
+      $('btn-bag').classList.add('bump');
+    }
+    renderBag();
   }
 
   const difficulty = () => data.difficulties[state.difficulty];
@@ -468,12 +622,23 @@
     await typeBlock(ev.text, 'event');
     let outcome = ev.outcome;
     if (ev.choices) {
+      if (ev.needs) {
+        const have = hasItem(ev.needs.item);
+        panel().append(
+          el('div', `need-tag ${have ? 'have' : 'missing'}`,
+            `필요한 아이템: ${data.items[ev.needs.item].name} · ${have ? '가방에 있음' : '가방에 없음'}`),
+        );
+        scrollPanel();
+      }
       const yes = await askYesNo();
       panel().append(el('div', 'choice-tag', yes ? '▸ 예' : '▸ 아니오'));
       outcome = yes ? ev.choices.y : ev.choices.n;
+      const needsChoice = ev.needs && (ev.needs.choice === 'y') === yes;
+      if (needsChoice && !hasItem(ev.needs.item)) outcome = ev.needs.missing;
     }
     if (outcome.text) await typeBlock(outcome.text, 'outcome');
     applyAffection(outcome.affection);
+    applyItems(outcome.items);
     showMoney(outcome.money || 0);
     await next();
   }
@@ -482,6 +647,7 @@
     state.balance = job().startBalance;
     state.shownBalance = state.balance;
     state.affection = data.lovers.map(() => 0);
+    state.inventory = {};
     state.used = new Set();
     state.turn = 0;
     state.result = null;
@@ -518,6 +684,14 @@
     );
     clearPanel();
     await typeBlock(confessText(job(), chosen), 'story');
+    const lover = data.lovers[chosen];
+    if (lover.favoriteItem && hasItem(lover.favoriteItem)) {
+      // Carrying the lover's favorite item makes the confession more convincing.
+      state.inventory[lover.favoriteItem] -= 1;
+      renderBag();
+      await typeBlock(fmt(data.ui.giftLine, { item: data.items[lover.favoriteItem].object, color: lover.color }), 'outcome');
+      changeAffection(chosen, data.settings.giftBonus || 0);
+    }
     await next('고백한다');
 
     let key = 'noMoney';
@@ -553,7 +727,12 @@
     $('result-who').textContent =
       `${state.name}의 7일 · ${job().name} · ${data.difficulties[state.difficulty].name}` + (r.isNew ? ' · 새 엔딩!' : '');
     $('result-title').textContent = r.title;
-    const body = r.text.trim().split('\n').filter((l) => l.trim() && l.trim() !== r.title).join('\n');
+    const body = r.text
+      .trim()
+      .split('\n')
+      .map((l) => l.replace(/^@\S+\s+/, ''))
+      .filter((l) => l.trim() && l.trim() !== r.title)
+      .join('\n');
     $('result-text').textContent = body;
     $('result-balance').textContent = won(state.balance);
     $('result-lover').textContent = r.lover == null ? '-' : `${data.lovers[r.lover].color} 머리`;
@@ -730,6 +909,11 @@
       renderCollection();
     });
     document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
+    $('btn-bag').addEventListener('click', () => openBag(true));
+    $('btn-bag-close').addEventListener('click', () => openBag(false));
+    $('bag-sheet').addEventListener('click', (e) => {
+      if (e.target === $('bag-sheet')) openBag(false);
+    });
     panel().addEventListener('click', () => {
       if (typing && skipTyping) skipTyping();
     });
