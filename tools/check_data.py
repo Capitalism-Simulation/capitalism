@@ -48,6 +48,11 @@ def main():
     for d in data["difficulties"]:
         if not 0 < d["eventPoolRatio"] <= 1:
             err(f"difficulty {d['name']}: eventPoolRatio must be in (0, 1]")
+        for key in ("lossMultiplier", "gainMultiplier"):
+            if not isinstance(d.get(key, 1), (int, float)) or d.get(key, 1) < 0:
+                err(f"difficulty {d['name']}: {key} must be a number >= 0")
+        if not isinstance(d.get("minAffectionDelta", 0), int):
+            err(f"difficulty {d['name']}: minAffectionDelta must be an integer")
 
     # How many turns each (phase, slot) pool must cover.
     need = Counter()

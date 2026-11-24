@@ -177,6 +177,12 @@
     });
 
     fillSegmented('difficulty-options', 'difficulty', data.difficulties.map((d) => d.name), saved.difficulty ?? 1);
+    const describe = () => {
+      const i = Number(document.querySelector('input[name="difficulty"]:checked').value);
+      $('difficulty-desc').textContent = data.difficulties[i].description || '';
+    };
+    $('difficulty-options').onchange = describe;
+    describe();
     fillSegmented('gender-options', 'gender', data.genders.player.map((g) => g.name), saved.gender ?? 0);
     fillSegmented('lover-gender-options', 'loverGender', data.genders.lover.map((g) => g.name), saved.loverGender ?? 0);
     if (!jobs.querySelector('input:checked')) jobs.querySelector('input').checked = true;
@@ -382,9 +388,23 @@
 
   // ---------- Game flow ----------
 
+  const outcomesOf = (e) => (e.choices ? [e.choices.y, e.choices.n] : [e.outcome]);
+  const hasAffection = (e) => outcomesOf(e).some((o) => o.affection && o.affection.length);
+  const averageMoney = (e) => {
+    const outs = outcomesOf(e);
+    return outs.reduce((sum, o) => sum + (o.money || 0), 0) / outs.length;
+  };
+
   function pickEvent(slot, phase) {
     let pool = job().events.filter((e) => e.slot === slot && e.phase === phase);
     if (!pool.length) return null;
+    // Same order as the console version: affection events first (always kept), then
+    // pure-money events from harshest to most generous. Array#sort is stable.
+    pool.sort((a, b) => {
+      const affA = hasAffection(a), affB = hasAffection(b);
+      if (affA !== affB) return affA ? -1 : 1;
+      return affA ? 0 : averageMoney(a) - averageMoney(b);
+    });
     // Harder difficulties only use the first part of each pool (same rule as the console version).
     const ratio = data.difficulties[state.difficulty].eventPoolRatio;
     pool = pool.slice(0, Math.max(1, Math.ceil(pool.length * ratio - 1e-9)));
@@ -405,7 +425,20 @@
     }
   }
 
-  function showMoney(amount) {
+  const difficulty = () => data.difficulties[state.difficulty];
+
+  function scaleMoney(amount) {
+    const d = difficulty();
+    const mult = amount < 0 ? d.lossMultiplier ?? 1 : d.gainMultiplier ?? 1;
+    return Math.round((amount * mult) / 100) * 100 || 0;
+  }
+
+  const minAffection = (j) =>
+    ((j.trueEnding && j.trueEnding.minAffection != null) ? j.trueEnding.minAffection : data.settings.trueEnding.minAffection) +
+    (difficulty().minAffectionDelta || 0);
+
+  function showMoney(rawAmount) {
+    const amount = scaleMoney(rawAmount);
     const chip = el('div', `money ${amount > 0 ? 'gain' : amount < 0 ? 'loss' : ''}`,
       amount === 0 ? `잔고 ${won(state.balance)} (변동 없음)` : signedWon(amount));
     panel().append(chip);
@@ -489,7 +522,7 @@
 
     let key = 'noMoney';
     if (state.balance >= minBalance(job()))
-      key = state.affection[chosen] >= data.settings.trueEnding.minAffection ? 'true' : 'noLove';
+      key = state.affection[chosen] >= minAffection(job()) ? 'true' : 'noLove';
     const text = fmt(localize(endingText(job(), key)), { color: data.lovers[chosen].color });
     clearPanel();
     await typeBlock(text, 'ending');
@@ -525,7 +558,6 @@
     $('result-balance').textContent = won(state.balance);
     $('result-lover').textContent = r.lover == null ? '-' : `${data.lovers[r.lover].color} 머리`;
 
-    const s = data.settings.trueEnding;
     const max = Math.max(10, ...state.affection);
     const aff = $('result-affection');
     aff.replaceChildren(el('p', 'muted small', '호감도 공개'));
@@ -540,7 +572,7 @@
       aff.append(row);
     });
     $('result-rule').textContent =
-      `고백 성공 조건: 잔고 ${won(minBalance(job()))} 이상, 상대 호감도 ${s.minAffection} 이상 · 엔딩 도감 ${Object.keys(unlocked()).length} / ${collectionTotal()}`;
+      `고백 성공 조건: 잔고 ${won(minBalance(job()))} 이상, 상대 호감도 ${minAffection(job())} 이상 · 엔딩 도감 ${Object.keys(unlocked()).length} / ${collectionTotal()}`;
   }
 
   function shareText() {

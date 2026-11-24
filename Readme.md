@@ -95,7 +95,12 @@ Capitalism.exe --data 경로     다른 데이터 파일 사용
   - `{연상호칭}`처럼 `genderWords`에 등록한 단어: 두 성별 조합에 따라 형/누나/오빠/언니/선배로 바뀜
   - 받침에 따라 조사가 달라지는 경우(`남자친구가` / `애인이`)는 조사까지 선택지에 넣어 주세요.
   - `tools/check_data.py`가 선택지 개수와 등록되지 않은 단어를 검사합니다.
-- 난이도의 `eventPoolRatio`는 각 칸의 이벤트 목록 중 앞에서부터 몇 %를 쓸지 정합니다 (Easy 100%, Normal 85%, Hard 65%).
+- **난이도** (`difficulties`)
+  - `eventPoolRatio`: 각 칸(시간대 × 초반/후반)의 이벤트 중 몇 %를 쓸지. 엔진이 목록을 **호감도 이벤트 → 돈 손해가 큰 이벤트 → 돈 되는 이벤트** 순으로 정렬한 뒤 앞에서부터 자르기 때문에, 어려울수록 돈 되는 이벤트가 빠지고 호감도 이벤트는 항상 남습니다. 파일 안의 순서는 신경 쓰지 않아도 됩니다.
+  - `lossMultiplier` / `gainMultiplier`: 손실·수입 배율 (100원 단위 반올림)
+  - `minAffectionDelta`: 트루 엔딩에 필요한 호감도에 더할 값
+  - `description`: 설정 화면에 보이는 설명
+- 직업별 `trueEnding.minBalance` / `trueEnding.minAffection`으로 트루 엔딩 기준을 따로 정할 수 있습니다.
 
 ## 리팩터링하면서 고친 버그
 

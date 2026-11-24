@@ -44,15 +44,27 @@
   "difficulties": [
     {
       "name": "Easy",
-      "eventPoolRatio": 1.0
+      "description": "모든 이벤트 등장 · 손실 20% 감소 · 수입 20% 증가",
+      "eventPoolRatio": 1.0,
+      "lossMultiplier": 0.8,
+      "gainMultiplier": 1.2,
+      "minAffectionDelta": 0
     },
     {
       "name": "Normal",
-      "eventPoolRatio": 0.85
+      "description": "돈 되는 이벤트 일부 제외",
+      "eventPoolRatio": 0.8,
+      "lossMultiplier": 1.0,
+      "gainMultiplier": 1.0,
+      "minAffectionDelta": 0
     },
     {
       "name": "Hard",
-      "eventPoolRatio": 0.65
+      "description": "돈 되는 이벤트 더 제외 · 손실 10% 증가 · 고백 성공에 호감도 1 더 필요",
+      "eventPoolRatio": 0.65,
+      "lossMultiplier": 1.1,
+      "gainMultiplier": 1.0,
+      "minAffectionDelta": 1
     }
   ],
   "lovers": [
@@ -83,7 +95,7 @@
     {
       "id": "highschool",
       "name": "고등학생",
-      "startBalance": 100000,
+      "startBalance": 140000,
       "stories": {
         "0": [
           "당신은 선택한 직업에 따라 주어지는 초기 자본으로 7일동안\n최대한 많은 계좌 잔액을 유지하거나 증가시켜야 합니다.\n각 Day별로 랜덤한 이벤트를 겪으며 당신의 선택에 따라 자본을 얻거나 잃게 됩니다.\n계좌 잔액이 0이하가 되면 게임이 종료됩니다.\n",
@@ -631,7 +643,10 @@
     {
       "id": "university",
       "name": "대학생",
-      "startBalance": 300000,
+      "startBalance": 350000,
+      "trueEnding": {
+        "minAffection": 3
+      },
       "stories": {
         "0": [
           "당신은 선택한 난이도와 직업에 따라 주어지는 초기 자본으로 7일동안\n최대한 많은 계좌 잔액을 유지하거나 증가시켜야 합니다.\n각 Day별로 랜덤한 이벤트를 겪으며 당신의 선택에 따라 자본을 얻거나 잃게 됩니다.\n계좌 잔액이 0이하가 되면 게임이 종료됩니다.\n",
@@ -1109,7 +1124,7 @@
     {
       "id": "office",
       "name": "직장인",
-      "startBalance": 300000,
+      "startBalance": 350000,
       "trueEnding": {
         "minBalance": 100000
       },

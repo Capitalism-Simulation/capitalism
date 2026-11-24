@@ -102,6 +102,12 @@ GameData parseGameData(const json::Value& root) {
         Difficulty diff;
         diff.name = v.at("name").asString();
         diff.eventPoolRatio = v.at("eventPoolRatio").asNumber();
+        if (const json::Value* x = v.find("description")) diff.description = x->asString();
+        if (const json::Value* x = v.find("lossMultiplier")) diff.lossMultiplier = x->asNumber();
+        if (const json::Value* x = v.find("gainMultiplier")) diff.gainMultiplier = x->asNumber();
+        if (const json::Value* x = v.find("minAffectionDelta")) diff.minAffectionDelta = x->asInt();
+        if (diff.lossMultiplier < 0 || diff.gainMultiplier < 0)
+            dataError("difficulty " + diff.name, "multipliers must not be negative");
         if (diff.eventPoolRatio <= 0.0 || diff.eventPoolRatio > 1.0)
             dataError("difficulty " + diff.name, "eventPoolRatio must be in (0, 1]");
         d.difficulties.push_back(diff);
@@ -149,8 +155,10 @@ GameData parseGameData(const json::Value& root) {
                 dataError("job " + job.id, "confess must have one line per lover");
         }
         if (const json::Value* endings = v.find("endings")) job.endings = parseStringMap(*endings);
-        if (const json::Value* te = v.find("trueEnding"))
+        if (const json::Value* te = v.find("trueEnding")) {
             if (const json::Value* mb = te->find("minBalance")) job.trueEndingMinBalance = mb->asInt();
+            if (const json::Value* ma = te->find("minAffection")) job.trueEndingMinAffection = ma->asInt();
+        }
         d.jobs.push_back(std::move(job));
     }
     if (d.jobs.empty()) dataError("jobs", "at least one job is required");

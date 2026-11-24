@@ -47,11 +47,19 @@ struct Job {
     std::vector<std::string> confess;            // one line per lover; empty = use Lover::confess
     std::map<std::string, std::string> endings;  // same keys as GameData::endings
     int trueEndingMinBalance = -1;               // -1 = use Settings::trueEndingMinBalance
+    int trueEndingMinAffection = -1;             // -1 = use Settings::trueEndingMinAffection
 };
 
 struct Difficulty {
     std::string name;
-    double eventPoolRatio = 1.0;  // share of each event pool (in file order) that can appear
+    std::string description;
+    // Share of each event pool that can appear. Pools are ordered so that affection events
+    // always stay and pure-money events go from harshest to most generous; harder levels
+    // therefore lose the most generous money events first.
+    double eventPoolRatio = 1.0;
+    double lossMultiplier = 1.0;  // applied to negative money outcomes
+    double gainMultiplier = 1.0;  // applied to positive money outcomes
+    int minAffectionDelta = 0;    // added to the affection needed for the true ending
 };
 
 struct Lover {

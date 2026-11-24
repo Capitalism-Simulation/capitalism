@@ -151,6 +151,7 @@ body { min-height: 100dvh; }
 .setup { display: flex; flex-direction: column; gap: 22px; }
 .field { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .field-label { font-size: 14px; font-weight: 700; color: var(--muted); padding: 0; }
+.field-hint { margin: 0; min-height: 1.4em; }
 
 input[type="text"] {
   font: inherit;

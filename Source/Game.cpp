@@ -44,7 +44,8 @@ size_t Game::chooseFromList(const std::string& title, const std::vector<std::str
 void Game::setupPlayer() {
     std::vector<std::string> jobNames, difficultyNames, playerGenderNames, loverGenderNames;
     for (const Job& j : data_.jobs) jobNames.push_back(j.name);
-    for (const Difficulty& d : data_.difficulties) difficultyNames.push_back(d.name);
+    for (const Difficulty& d : data_.difficulties)
+        difficultyNames.push_back(d.description.empty() ? d.name : d.name + " (" + d.description + ")");
     for (const GenderOption& g : data_.playerGenders) playerGenderNames.push_back(g.name);
     for (const GenderOption& g : data_.loverGenders) loverGenderNames.push_back(g.name);
 
@@ -129,6 +130,23 @@ const Event* Game::pickEvent(Slot slot, Phase phase) {
         if (e.slot == slot && e.phase == phase) pool.push_back(&e);
     if (pool.empty()) return nullptr;
 
+    // Order the pool so harder difficulties drop the most generous money events first:
+    // affection events always come first (kept on every difficulty), then pure-money events
+    // from harshest to most generous by average money. Ties keep the file order.
+    auto hasAffection = [](const Event* e) {
+        if (!e->hasChoice) return !e->outcome.affection.empty();
+        return !e->yes.affection.empty() || !e->no.affection.empty();
+    };
+    auto averageMoney = [](const Event* e) {
+        return e->hasChoice ? (e->yes.money + e->no.money) / 2.0 : static_cast<double>(e->outcome.money);
+    };
+    std::stable_sort(pool.begin(), pool.end(), [&](const Event* a, const Event* b) {
+        bool affA = hasAffection(a), affB = hasAffection(b);
+        if (affA != affB) return affA;
+        if (affA) return false;
+        return averageMoney(a) < averageMoney(b);
+    });
+
     // Harder difficulties only use the first part of each pool (same rule as the original game).
     double ratio = data_.difficulties[player_.difficulty].eventPoolRatio;
     size_t limit = static_cast<size_t>(std::ceil(static_cast<double>(pool.size()) * ratio - 1e-9));
@@ -163,13 +181,18 @@ void Game::applyOutcome(const Outcome& outcome) {
         }
     }
 
-    if (outcome.money > 0)
-        console::print(format(data_.text("gain"), {{"amount", std::to_string(outcome.money)}}) + "\n");
-    else if (outcome.money < 0)
-        console::print(format(data_.text("loss"), {{"amount", std::to_string(outcome.money)}}) + "\n");
+    // Difficulty scales money, rounded to 100 won.
+    const Difficulty& diff = data_.difficulties[player_.difficulty];
+    double scaled = outcome.money * (outcome.money < 0 ? diff.lossMultiplier : diff.gainMultiplier);
+    int money = static_cast<int>(std::lround(scaled / 100.0)) * 100;
+
+    if (money > 0)
+        console::print(format(data_.text("gain"), {{"amount", std::to_string(money)}}) + "\n");
+    else if (money < 0)
+        console::print(format(data_.text("loss"), {{"amount", std::to_string(money)}}) + "\n");
     else
         console::print(format(data_.text("balance"), {{"balance", std::to_string(balance_)}}) + "\n");
-    balance_ += outcome.money;
+    balance_ += money;
 
     console::waitEnter(data_.text("pressEnter"));
 }
@@ -192,9 +215,11 @@ void Game::runEnding() {
 
     int minBalance = job().trueEndingMinBalance >= 0 ? job().trueEndingMinBalance
                                                       : data_.settings.trueEndingMinBalance;
+    int minAffection = (job().trueEndingMinAffection >= 0 ? job().trueEndingMinAffection
+                                                          : data_.settings.trueEndingMinAffection) +
+                       data_.difficulties[player_.difficulty].minAffectionDelta;
     const char* key = "noMoney";
-    if (balance_ >= minBalance)
-        key = affection_[chosen] >= data_.settings.trueEndingMinAffection ? "true" : "noLove";
+    if (balance_ >= minBalance) key = affection_[chosen] >= minAffection ? "true" : "noLove";
     console::print("\n");
     console::typewrite(format(localize(endingText(key)), {{"color", lover.color}}));
 }
